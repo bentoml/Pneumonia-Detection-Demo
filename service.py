@@ -40,8 +40,8 @@ class Output(pydantic.BaseModel):
 
 
 @svc.api(
-    input=bentoml.io.Image.from_sample(sample="./samples/NORMAL2-IM-1427-0001.jpeg"),
-    output=bentoml.io.JSON.from_sample(sample=Output(class_name="NORMAL")),
+    input=bentoml.io.Image(),
+    output=bentoml.io.JSON.from_sample(sample=Output(class_name="PNEUMONIA")),
     route="/v1/classify",
 )
 async def classify(image: PIL.Image.Image) -> Output:

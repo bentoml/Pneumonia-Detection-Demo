@@ -48,7 +48,7 @@ def transform(phase: t.Literal["train", "test", "val"] = "train") -> T.Compose:
 
 
 def init_model(num_classes: int = 2) -> M.ResNet:
-    model = M.resnet50(pretrained=True)
+    model = M.resnet50(weights=M.ResNet50_Weights.DEFAULT)
     for param in model.parameters():
         param.requires_grad = False
 
@@ -86,7 +86,7 @@ def prepare_dataloader(directory: str | None = None) -> tuple[DataLoader, ...]:
 
 def training(
     model: M.ResNet,
-    criterion: nn.CrossEntropyLoss,
+    criterion: nn.NLLLoss,
     optimizer: optim.Adam,
     train_loader: DataLoader,
     val_loader: DataLoader,
@@ -195,7 +195,7 @@ def training(
                         f"\nEpoch: {epoch} \ttraining loss: {train_loss:.4f} \ttraining accuracy: {100 * train_acc:.2f}%"
                     )
                     print(
-                        f"\t\tvalid loss: {valid_loss:.4f}\t validation accuracy: {100 * valid_acc:.2f}%"
+                        f"\t\tvalid loss: {valid_loss:.4f}\tvalidation accuracy: {100 * valid_acc:.2f}%"
                     )
 
                 # Save the model if validation loss decreases
@@ -259,8 +259,8 @@ def accuracy(
 
 if __name__ == "__main__":
     model = init_model()
-    optimizer = optim.Adam(model.parameters(), lr=1e-2)
-    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters())
+    criterion = nn.NLLLoss()
 
     train_loader, test_loader, val_loader = prepare_dataloader()
 
