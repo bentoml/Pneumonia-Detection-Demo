@@ -1,0 +1,12 @@
+version: 1
+api_server:
+  workers: 6
+  grpc:
+    reflection:
+      enabled: true
+runners:
+  logging:
+    access:
+      enabled: false
+  pneumonia-cnn:
+    resources: system

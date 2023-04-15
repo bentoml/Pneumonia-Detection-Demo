@@ -1,0 +1,5 @@
+kaggle
+torch>=2.0
+torchvision
+bentoml[aws,io-image,io-pandas,io-json,grpc,grpc-reflection]
+torchsummary
