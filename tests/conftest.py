@@ -49,6 +49,13 @@ def fixture_xray_im(request: FixtureRequest):
     return im
 
 
+@pytest.fixture(autouse=True, scope="package")
+def bento_directory(request: FixtureRequest):
+    os.chdir(PROJECT_PATH.__fspath__())
+    yield
+    os.chdir(request.config.invocation_dir)
+
+
 # TODO: Add containerize tests
 @cached_contextmanager("{project_path}, {cleanup}")
 def build(
