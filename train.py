@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import copy
+import time
 import typing as t
 import pathlib as P
 import subprocess
-from timeit import default_timer
 
-import numpy as np
 import torch
-import pandas as pd
 import torch.nn as nn
 import torch.optim as optim
 import torchvision.models as M
@@ -24,42 +23,60 @@ ROOT = P.Path(
 )
 DATASET_DIR = ROOT.joinpath("data", "chest_xray", "chest_xray")
 # number of iterations
-NUM_ITER = 10
+EPOCHS = 20
 
 
 def transform(phase: t.Literal["train", "test", "val"] = "train") -> T.Compose:
     if phase == "train":
         return T.Compose(
             [
-                T.Resize(size=(256, 256)),
-                T.RandomRotation(degrees=15),
-                T.CenterCrop(size=224),
+                T.RandomResizedCrop(224),
+                T.RandomHorizontalFlip(),
                 T.ToTensor(),
                 T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
             ]
         )
     return T.Compose(
         [
-            T.Resize(size=(224, 224)),
+            T.Resize(256),
+            T.CenterCrop(224),
             T.ToTensor(),
             T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ]
     )
 
 
-def init_model(num_classes: int = 2) -> M.ResNet:
-    model = M.resnet50(weights=M.ResNet50_Weights.DEFAULT)
+def init_model(
+    num_classes: int = 2, backbone: t.Literal["resnet", "vgg"] = "vgg"
+) -> M.ResNet | M.VGG:
+    def classifier(num_inputs):
+        return nn.Sequential(
+            nn.Linear(num_inputs, 256),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+            nn.Linear(256, num_classes),
+            nn.LogSoftmax(dim=1),
+        )
+
+    if backbone == "resnet":
+        model = M.resnet50(weights=M.ResNet50_Weights.DEFAULT)
+    elif backbone == "vgg":
+        model = M.vgg16(weights=M.VGG16_Weights.DEFAULT)
+    else:
+        raise ValueError(
+            f"Invalid backbone {backbone}, currently only supports resnet50 or vgg16"
+        )
+
     for param in model.parameters():
         param.requires_grad = False
 
-    num_inputs = model.fc.in_features
-    model.fc = nn.Sequential(  # type: ignore
-        nn.Linear(num_inputs, 256),
-        nn.ReLU(),
-        nn.Dropout(0.4),
-        nn.Linear(256, num_classes),
-        nn.LogSoftmax(dim=1),
-    )
+    if backbone == "resnet":
+        n_inputs = model.fc.in_features
+        model.fc = nn.Linear(n_inputs, num_classes)
+    elif backbone == "vgg":
+        n_inputs = model.classifier[6].in_features
+        model.classifier[6] = classifier(n_inputs)
+
     return model.to(torch.float32).to("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -84,170 +101,82 @@ def prepare_dataloader(directory: str | None = None) -> tuple[DataLoader, ...]:
     )
 
 
-def training(
-    model: M.ResNet,
-    criterion: nn.NLLLoss,
-    optimizer: optim.Adam,
-    train_loader: DataLoader,
-    val_loader: DataLoader,
-    save_file_name: str = "resnet50-pneumonia.pt",
-    max_epochs_stop: int = 5,
-    n_epochs: int = NUM_ITER,
-    print_every: int = 2,
+def train_model(
+    model, criterion, optimizer, train_loader, test_loader, scheduler, num_epochs=EPOCHS
 ):
-    # Early stopping intialization
-    epochs_no_improve = 0
-    valid_loss_min = np.Inf
-    history = []
-    best_epoch = 0
-    overall_start = default_timer()
+    since = time.time()
 
-    # Main loop
-    for epoch in range(n_epochs):
-        # keep track of training and validation loss each epoch
-        train_loss = 0.0
-        valid_loss = 0.0
+    best_model_wts = copy.deepcopy(model.state_dict())
+    best_acc = 0.0
 
-        train_acc = 0
-        valid_acc = 0
+    dataset_sizes = {
+        "train": len(train_loader.dataset),
+        "test": len(test_loader.dataset),
+    }
 
-        # Set to training
-        model.train()
-        start = default_timer()
+    for epoch in range(num_epochs):
+        print(f"Epoch {epoch}/{num_epochs - 1}")
+        print("-" * 10)
 
-        # Training loop
-        for ii, (data, target) in enumerate(train_loader):
-            # Tensors to gpu
-            if torch.cuda.is_available():
-                data, target = data.cuda(), target.cuda()
+        # Each epoch has a training and validation phase
+        for phase in ["train", "test"]:
+            if phase == "train":
+                model.train()  # Set model to training mode
+            else:
+                model.eval()  # Set model to evaluate mode
 
-            # Clear gradients
-            optimizer.zero_grad()
-            # Predicted outputs are log probabilities
-            output = model(data)
+            running_loss = 0.0
+            running_corrects = 0
 
-            # Loss and backpropagation of gradients
-            loss = criterion(output, target)
-            loss.backward()
+            # Iterate over data.
+            for inputs, labels in {"train": train_loader, "test": test_loader}[phase]:
+                if torch.cuda.is_available():
+                    inputs = inputs.cuda()
+                    labels = labels.cuda()
 
-            # Update the parameters
-            optimizer.step()
+                # zero the parameter gradients
+                optimizer.zero_grad()
 
-            # Track train loss by multiplying average loss by number of examples in batch
-            train_loss += loss.item() * data.size(0)
+                # forward
+                # track history if only in train
+                with torch.set_grad_enabled(phase == "train"):
+                    outputs = model(inputs)
+                    _, preds = torch.max(outputs, 1)
+                    loss = criterion(outputs, labels)
 
-            # Calculate accuracy by finding max log probability
-            _, pred = torch.max(output, dim=1)
-            correct_tensor = pred.eq(target.data.view_as(pred))
+                    # backward + optimize only if in training phase
+                    if phase == "train":
+                        loss.backward()
+                        optimizer.step()
 
-            # Need to convert correct tensor from int to float to average
-            accuracy = torch.mean(correct_tensor.type(torch.FloatTensor))
-            # Multiply average accuracy times the number of examples in batch
-            train_acc += accuracy.item() * data.size(0)
+                # statistics
+                running_loss += loss.item() * inputs.size(0)
+                running_corrects += torch.sum(preds == labels.data)
+            if phase == "train":
+                scheduler.step()
 
-            # Track training progress
-            print(
-                f"Epoch: {epoch}\t{100 * (ii + 1) / len(train_loader):.2f}% complete. {default_timer() - start:.2f} seconds elapsed in epoch.",
-                end="\r",
-            )
+            epoch_loss = running_loss / dataset_sizes[phase]
+            epoch_acc = running_corrects.double() / dataset_sizes[phase]
 
-        # After training loops ends, start validation
-        else:
-            # Don't need to keep track of gradients
-            with torch.no_grad():
-                # Set to evaluation mode
-                model.eval()
+            if phase == "train":
+                print(f"{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}")
+            else:
+                print(f"Validation Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}")
 
-                # Validation loop
-                for data, target in val_loader:
-                    # Tensors to gpu
-                    if torch.cuda.is_available():
-                        data, target = data.cuda(), target.cuda()
+            # deep copy the model
+            if phase == "test" and epoch_acc > best_acc:
+                best_acc = epoch_acc
+                best_model_wts = copy.deepcopy(model.state_dict())
 
-                    # Forward pass
-                    output = model(data)
+        print()
 
-                    # Validation loss
-                    loss = criterion(output, target)
-                    # Multiply average loss times the number of examples in batch
-                    valid_loss += loss.item() * data.size(0)
+    time_elapsed = time.time() - since
+    print(f"Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s")
+    print(f"Best val Acc: {best_acc:4f}")
 
-                    # Calculate validation accuracy
-                    _, pred = torch.max(output, dim=1)
-                    correct_tensor = pred.eq(target.data.view_as(pred))
-                    accuracy = torch.mean(correct_tensor.type(torch.FloatTensor))
-                    # Multiply average accuracy times the number of examples
-                    valid_acc += accuracy.item() * data.size(0)
-
-                # Calculate average losses
-                train_loss = train_loss / len(train_loader.dataset)
-                valid_loss = valid_loss / len(val_loader.dataset)
-
-                # Calculate average accuracy
-                train_acc = train_acc / len(train_loader.dataset)
-                valid_acc = valid_acc / len(val_loader.dataset)
-
-                history.append([train_loss, valid_loss, train_acc, valid_acc])
-
-                # Print training and validation results
-                if (epoch + 1) % print_every == 0:
-                    print(
-                        f"\nEpoch: {epoch} \ttraining loss: {train_loss:.4f} \ttraining accuracy: {100 * train_acc:.2f}%"
-                    )
-                    print(
-                        f"\t\tvalid loss: {valid_loss:.4f}\tvalidation accuracy: {100 * valid_acc:.2f}%"
-                    )
-
-                # Save the model if validation loss decreases
-                if valid_loss < valid_loss_min:
-                    # Save model
-                    torch.save(model.state_dict(), save_file_name)
-                    # Track improvement
-                    epochs_no_improve = 0
-                    valid_loss_min = valid_loss
-                    best_epoch = epoch
-
-                # Otherwise increment count of epochs with no improvement
-                else:
-                    epochs_no_improve += 1
-                    # Trigger early stopping
-                    if epochs_no_improve >= max_epochs_stop:
-                        print(
-                            f"\nEarly Stopping! Total epochs: {epoch}. Best epoch: {best_epoch} with loss: {valid_loss_min:.2f} and acc: {100 * valid_acc:.2f}%"
-                        )
-                        total_time = default_timer() - overall_start
-                        print(
-                            f"{total_time:.2f} total seconds elapsed. {total_time / (epoch+1):.2f} seconds per epoch."
-                        )
-
-                        # Load the best state dict
-                        model.load_state_dict(torch.load(save_file_name))
-
-                        # Format history
-                        history = pd.DataFrame(
-                            history,
-                            columns=[
-                                "train_loss",
-                                "valid_loss",
-                                "train_acc",
-                                "valid_acc",
-                            ],
-                        )
-                        return model, history
-
-    # Record overall time and print out stats
-    total_time = default_timer() - overall_start
-    print(
-        f"\nBest epoch: {best_epoch} with loss: {valid_loss_min:.2f} and acc: {100 * valid_acc:.2f}%"
-    )
-    print(
-        f"{total_time:.2f} total seconds elapsed. {total_time / (epoch):.2f} seconds per epoch."
-    )
-    # Format history
-    history = pd.DataFrame(
-        history, columns=["train_loss", "valid_loss", "train_acc", "valid_acc"]
-    )
-    return model, history
+    # load best model weights
+    model.load_state_dict(best_model_wts)
+    return model
 
 
 def accuracy(
@@ -258,18 +187,31 @@ def accuracy(
 
 
 if __name__ == "__main__":
-    model = init_model()
-    optimizer = optim.Adam(model.parameters())
-    criterion = nn.NLLLoss()
+    backbone = "resnet"
+    model = init_model(backbone=backbone)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    criterion = nn.CrossEntropyLoss()
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
 
-    train_loader, test_loader, val_loader = prepare_dataloader()
+    train_loader, test_loader, _ = prepare_dataloader()
 
-    model, _ = training(model, criterion, optimizer, train_loader, val_loader)
+    model = train_model(
+        model,
+        criterion,
+        optimizer,
+        train_loader,
+        test_loader,
+        scheduler,
+    )
 
     bentomodel = bentoml.pytorch.save_model(
-        "resnet-pneumonia",
+        f"{backbone}-pneumonia",
         model,
-        metadata={"idx2cls": idx_to_class, "cls2idx": class_to_idx},
+        metadata={
+            "idx2cls": idx_to_class,
+            "cls2idx": class_to_idx,
+            "backbone": backbone,
+        },
     )
 
     print("Saved model:", bentomodel)

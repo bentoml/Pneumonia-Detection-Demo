@@ -1,4 +1,5 @@
 service: 'service.py:svc'
+name: pneumonia-classifier
 labels:
   owner: bentoml-team
   project: pneumonia-classifier
@@ -6,10 +7,10 @@ include:
   - '*.py'
   - '/tests'
   - 'pyproject.toml'
-  - '/bentoml_configuration.yaml'
+  - '/config'
   - '/samples'
 python:
   requirements_txt: requirements/tests.txt
 docker:
   env:
-    BENTOML_CONFIG: ./bentoml_configuration.yaml
+    BENTOML_CONFIG: ./config/default.yaml

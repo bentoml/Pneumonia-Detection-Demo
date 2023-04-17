@@ -1,3 +1,8 @@
+[tool.pytest.ini_options]
+addopts = ["-rfEX", "-pno:warnings", "-vv"]
+python_files = ["test_*.py", "*_test.py"]
+testpaths = ["tests"]
+
 [tool.black]
 line-length = 88
 exclude = '''
@@ -18,11 +23,6 @@ exclude = '''
   )/
 )
 '''
-
-[tool.pytest.ini_options]
-addopts = ["-rfEX", "-pno:warnings", "-pbentoml.testing.pytest.plugin"]
-python_files = ["test_*.py", "*_test.py"]
-testpaths = ["tests"]
 
 [tool.ruff]
 # similar to black's
