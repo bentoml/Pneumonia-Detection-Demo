@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import os
 import io
 import pytest
@@ -8,7 +9,7 @@ import PIL.Image
 import typing as t
 import contextlib
 import bentoml
-from bentoml._internal.utils import cached_contextmanager, reserve_free_port
+from bentoml._internal.utils import reserve_free_port
 
 if t.TYPE_CHECKING:
     from _pytest.python import Metafunc
@@ -57,21 +58,18 @@ def bento_directory(request: FixtureRequest):
 
 
 # TODO: Add containerize tests
-@cached_contextmanager("{project_path}, {cleanup}")
-def build(
-    project_path: str = PROJECT_PATH.__fspath__(), cleanup: bool = True
-) -> Generator[bentoml.Bento]:
+@contextlib.contextmanager
+def build(project_path: str, cleanup: bool = True) -> Generator[bentoml.Bento]:
     """
     Build a BentoML project.
     """
-    from bentoml import bentos
-
     print(f"Building bento from path: {project_path}")
-    bento = bentos.build_bentofile(build_ctx=project_path)
+    subprocess.check_output(["bentoml", "build", project_path])
+    bento = bentoml.get(BENTO_NAME)
     yield bento
     if cleanup:
         print(f"Deleting bento: {str(bento.tag)}")
-        bentos.delete(bento.tag)
+        bentoml.bentos.delete(bento.tag)
 
 
 @contextlib.contextmanager
@@ -93,9 +91,10 @@ def create_server(
     ).__fspath__()
 
     try:
-        bento = bentoml.list(BENTO_NAME)
+        bento = bentoml.get(BENTO_NAME)
     except bentoml.exceptions.NotFound:
-        bento = stack.enter_context(build(cleanup=cleanup))
+        # XXX: If passing abspath, this will fail
+        bento = stack.enter_context(build(".", cleanup=False))
 
     kwargs = {"bento": bento, "production": True, "host": host, "port": server_port}
 
