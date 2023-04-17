@@ -1,5 +1,5 @@
 [tool.pytest.ini_options]
-addopts = ["-rfEX", "-pno:warnings", "-vv"]
+addopts = ["-rfEX", "-pno:warnings"]
 python_files = ["test_*.py", "*_test.py"]
 testpaths = ["tests"]
 
