@@ -6,7 +6,7 @@ import transformers
 
 import bentoml
 
-if __name__ == "__main__":
+def download_model() -> int:
     test_path = "./samples/NORMAL2-IM-1427-0001.jpeg"
     extractor = transformers.ViTImageProcessor.from_pretrained(
         "nickmuchi/vit-finetuned-chest-xray-pneumonia"
@@ -53,3 +53,8 @@ if __name__ == "__main__":
             "Saved model:",
             bentoml.transformers.save_model("vit-extractor-pneumonia", extractor),
         )
+    
+    return 0
+
+if __name__ == "__main__":
+    exit(download_model())    

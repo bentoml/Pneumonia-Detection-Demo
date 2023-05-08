@@ -9,6 +9,10 @@ import PIL.ImageOps
 
 import bentoml
 
+from save_model import download_model
+
+_ = download_model()
+
 bento_vit_model = bentoml.transformers.get("vit-model-pneumonia")
 model = bento_vit_model.to_runner()
 extractor = bentoml.transformers.get("vit-extractor-pneumonia").to_runner()

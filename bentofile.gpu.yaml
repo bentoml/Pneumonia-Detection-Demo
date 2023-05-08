@@ -1,0 +1,19 @@
+service: 'service.py:svc'
+name: pneumonia-classifier-gpu
+labels:
+  owner: bentoml-team
+  project: pneumonia-classifier
+include:
+  - '*.py'
+  - '/tests'
+  - 'pyproject.toml'
+  - '/config'
+  - '/samples'
+python:
+  requirements_txt: requirements/tests.txt
+docker:
+  cuda_version: 11.6
+  system_packages:
+    - 'git'
+  env:
+    BENTOML_CONFIG: ./config/default.yaml
