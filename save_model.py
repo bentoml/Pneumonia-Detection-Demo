@@ -57,4 +57,4 @@ def download_model() -> int:
     return 0
 
 if __name__ == "__main__":
-    exit(download_model())    
+    raise SystemExit(download_model())    
