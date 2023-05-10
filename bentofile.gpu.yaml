@@ -1,5 +1,5 @@
 service: 'service.py:svc'
-name: pneumonia-detection-demo
+name: pneumonia-detection-demo-gpu
 labels:
   owner: bentoml-team
   project: pneumonia-detection-demo
@@ -12,6 +12,7 @@ include:
 python:
   requirements_txt: requirements/tests.txt
 docker:
+  cuda_version: 11.6
   system_packages:
     - 'git'
   env:
