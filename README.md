@@ -74,8 +74,3 @@ BentoML offers a number of options for deploying and hosting online ML services 
 ## 👥 Community 👥
 BentoML has a thriving open source community where thousands of ML/AI practitioners are 
 contributing to the project, helping other users and discussing the future of AI. 👉 [Pop into our Slack community!](https://l.bentoml.com/join-slack)
-
-
-
-
-
