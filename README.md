@@ -10,6 +10,9 @@
 ## 📖 Introduction 📖
 In this project, we showcase the seamless integration of an image detection model into a service using BentoML. Leveraging the power of the pretrained `nickmuchi/vit-finetuned-chest-xray-pneumonia model` from HuggingFace, users can submit their lung X-ray images for analysis. The model will then determine, with precision, whether the individual has pneumonia or not.
 
+
+📝 **Disclaimer: Please note that this project is not intended to replace professional medical advice. It is designed purely for demonstration and testing purposes. Always consult with a qualified healthcare professional for a proper diagnosis.**
+
 | Normal | Pneumonia                               	|
 |------- |-----------------------------------------	|
 | ![Normal](samples/NORMAL2-IM-1427-0001.jpeg)| ![Pneumonia](samples/person1950_bacteria_4881.jpeg) |
