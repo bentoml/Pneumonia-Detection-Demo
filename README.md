@@ -53,8 +53,7 @@ BentoML's default model serving method is through an HTTP server. In this sectio
 curl -X 'POST' \
   'http://localhost:3000/v1/classify' \
   -H 'accept: application/json' \
-  -H 'Content-Type: image/mpo' \
-  --data-binary '@path-to-image'
+  -F 'image=@path-to-image'
 ```
 > Replace `path-to-image` with the file path of the image you want to send to the service.
 
@@ -63,7 +62,7 @@ The response look like:
 {"class_name":"NORMAL"}
 ```
 ### Via BentoClient 🐍
-To send requests in Python, one can use ``bentoml.client.Client`` to send requests to the service. Check out `client.py` for the example code.
+To send requests in Python, one can use ``bentoml.SyncHTTPClient`` to send requests to the service. Check out `client.py` for the example code.
 
 ### Swagger UI
 You can use Swagger UI to quickly explore the available endpoints of any BentoML service.

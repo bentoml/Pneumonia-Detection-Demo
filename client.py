@@ -12,11 +12,10 @@ SAMPLES = PROJECT_PATH.joinpath("samples").glob("*")
 
 
 def call(host: str = "127.0.0.1") -> None:
-    client = bentoml.client.Client.from_url(f"{host}:3000")
-
-    for sample in SAMPLES:
-        im = PIL.Image.open(sample)
-        print("Prediction:", client.classify(im))
+    with bentoml.SyncHTTPClient(f"http://{host}:3000") as client:
+        for sample in SAMPLES:
+            im = PIL.Image.open(sample)
+            print("Prediction:", client.classify(image=im))
 
 
 if __name__ == "__main__":
