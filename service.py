@@ -13,12 +13,6 @@ from save_model import download_model
 
 _ = download_model()
 
-bento_vit_model = bentoml.transformers.get("vit-model-pneumonia")
-model = bento_vit_model.to_runner()
-extractor = bentoml.transformers.get("vit-extractor-pneumonia").to_runner()
-
-svc = bentoml.Service("pneumonia-classifier", runners=[model, extractor])
-
 
 def preprocess(image: PIL.Image.Image) -> PIL.Image.Image:
     return PIL.ImageOps.exif_transpose(image).convert("RGB")
@@ -27,27 +21,29 @@ def preprocess(image: PIL.Image.Image) -> PIL.Image.Image:
 class Output(pydantic.BaseModel):
     class_name: t.Literal["NORMAL", "PNEUMONIA"]
 
-    @classmethod
-    def from_result(cls, logits: torch.Tensor) -> Output:
-        top_k = t.cast(int, bento_vit_model.info.metadata["top_k"])
-        id2label = bento_vit_model.custom_objects["id2label"]
+
+@bentoml.service(name="pneumonia-classifier")
+class PneumoniaClassifier:
+    vit_model = bentoml.models.BentoModel("vit-model-pneumonia")
+    vit_extractor = bentoml.models.BentoModel("vit-extractor-pneumonia")
+
+    def __init__(self) -> None:
+        self.model = bentoml.transformers.load_model(self.vit_model)
+        self.extractor = bentoml.transformers.load_model(self.vit_extractor)
+        self.top_k = t.cast(int, self.vit_model.info.metadata["top_k"])
+        self.id2label = self.vit_model.custom_objects["id2label"]
+
+    @bentoml.api(route="/v1/classify")
+    def classify(self, image: PIL.Image.Image) -> Output:
+        features = self.extractor(images=preprocess(image), return_tensors="pt")
+        with torch.no_grad():
+            logits = self.model(**features).logits
 
         # pneumonia model has two classes, which will return a list of two dicts.
         probs = logits.softmax(-1)[0]
-        scores, ids = probs.topk(top_k)
+        scores, ids = probs.topk(self.top_k)
         p0, p1 = [
-            (score, id2label[id_]) for score, id_ in zip(scores.tolist(), ids.tolist())
+            (score, self.id2label[id_])
+            for score, id_ in zip(scores.tolist(), ids.tolist())
         ]
-        return cls(class_name=p0[1] if p0[0] > p1[0] else p1[1])
-
-
-@svc.api(
-    input=bentoml.io.Image(),
-    output=bentoml.io.JSON(pydantic_model=Output),
-    route="/v1/classify",
-)
-async def classify(image: PIL.Image.Image) -> Output:
-    image = preprocess(image)
-    features = await extractor.async_run(images=image, return_tensors="pt")
-    outputs = await model.async_run(**features)
-    return Output.from_result(outputs.logits)
+        return Output(class_name=p0[1] if p0[0] > p1[0] else p1[1])
