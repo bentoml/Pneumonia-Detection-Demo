@@ -4,7 +4,7 @@ torchvision
 bentoml
 pydantic
 Pillow
-protobuf<4.0dev
+protobuf<7.0
 grpcio
 grpcio-health-checking
 torchsummary
